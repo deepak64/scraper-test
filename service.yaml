@@ -1,0 +1,3 @@
+name: "scraper"
+build_scripts:
+    - "/domain/deploy/deploy.sh"

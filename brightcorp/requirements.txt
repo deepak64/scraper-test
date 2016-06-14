@@ -1,0 +1,7 @@
+#w3lib
+requests
+git+https://github.com/scrapinghub/scrapylib.git#scrapylib
+-e git+https://github.com/scrapy/w3lib.git#egg=w3lib
+boto
+-e git+https://github.com/scrapinghub/python-scrapinghub#egg=scrapinghub
+pysftp

@@ -1,0 +1,370 @@
+ATSSpider2 and the Template System
+=============
+
+Table of Contents.
+1. Introduction (A1)
+2. Basic Structure (A2)
+3. The Templates (A3)
+3a. SimpleList (A3-1)
+3b. PaginationList (A3-2)
+3c. RecursiveList (A3-3)
+4. Parsing job data (A4)
+5. Sample spider (A5)
+
+(A1) INTRODUCTION 
+
+The new ATSSpider2 template is designed to replace the outdated ATSSpider template. Instead of defining callbacks such as the parse() method and writing every little bit of logic out by hand, all the developer has to do is select one of the three provided templates and define a set of 'rules' that dictate how the spider is to handle things like pagination, and data extraction, and the spider will take care of the rest. Below is a sample of a complete, working spider written with this new system of templates and rules.
+
+(A5) SAMPLE SPIDER
+
+Below is a sample spider, complete, working, and tested, that uses all of the features described in this readme.
+
+class ERecruit(RecursiveList):
+
+    name = 'erecruit'
+
+    def get_recursive_formdata(self, sel, response, *args, **kwargs):
+        eventtarget = sel.xpath('//tr/td[@colspan="4"]/a[preceding-sibling::span/text()][1]/@href').extract()[0]
+        eventtarget = RE_EVENTTARGET.search(eventtarget).group(1)
+
+        formdata = {
+            '__ASYNCPOST': 'false',
+            'ctl00$MainContentPlaceHolder$ScriptManager1': 'ctl00$MainContentPlaceHolder$LatestVacanciesUpdatePanel|%s' % eventtarget,
+            '__EVENTTARGET': eventtarget
+        }
+
+        for hid in sel.xpath('//input[@type="hidden"]'):
+            formdata[hid.xpath('@name').extract()[0]] = hid.xpath('@value').extract()[0]
+
+        return formdata
+
+    def get_job_url(self, sel, response, *args, **kwargs):
+        return urljoin(response.url, sel.xpath('td[2]/a/@href').extract()[0])
+
+    parse_job_index_rules = {
+        'base': '//tr[contains(td[2]/a/@href, "View")]',
+        'joburl': {'function': get_job_url},
+        'recursive': {
+            'condition': {
+                'xpath': {
+                    'xpaths': '//tr/td[@colspan="4"]/a[preceding-sibling::span/text()][1]'
+                }
+            },
+            'formdata': {'function': get_recursive_formdata},
+            'url': {'responseurl': {'processors': Identity()}}
+        }
+    }
+
+    parse_job_rules = {
+        'title': {
+            'xpath': {
+                'xpaths': '//span[contains(@id, "TitleLabel")]/text()',
+            }
+        },
+        'referencenumber': {
+            'xpath': {
+                'xpaths': '//span[contains(@id, "ReferenceNumber")]/text()',
+                'processors': [TakeFirst(), lambda x: 'erecruit-%s' % x]
+            }
+        },
+        'location': {
+            'xpath': {
+                'xpaths': '//span[contains(@id, "Location")]/text()'
+            }
+        },
+        'description': {
+            'xpath': {
+                'xpaths': '//span[contains(@id, "Purpose")]|//span[contains(@id, "SelectionCriteria")]'
+            }
+        },
+        'org_name': {
+            'xpath': {
+                'xpaths': '//span[contains(@id, "Entity")]/text()'
+            }
+        },
+        'baseSalary': {
+            'xpath': {
+                'xpaths': '//span[contains(@id, "Salary")]/text()'
+            }
+        },
+        'jobtype': {
+            'xpath': {
+                'xpaths': '//span[contains(@id, "StatusLabel")]/text()'
+            }
+        }
+    }
+
+The remaining sections of this README will focus on each part individually in an attempt to help you understand how it works.
+
+(A2) BASIC STRUCTURE
+
+The core of the new template system are its 'rules', which take on the form of python dictionary keys. Each rule is pre-defined, and has multiple 'options' that determine how its value is to be obtained. The basic structure of the rules is as follows:
+
+    rules_dict = {
+        'rule1': {
+            'xpath': {},
+            'function': {},
+            'value': {},
+            'default': {},
+        }
+        'rule2': {
+            'xpath': {},
+            ...
+        }
+    }
+
+When the spider is run, these rules and their options are used to compute and generate the values needed for the spider to paginate, extract, and store data.
+
+The four options are constant among all rules that use them, and are described below:
+
+    parse_job_rules = {
+        'title': {
+            # If you are to use xpath, place it here, following the format outlined in the RULES section of this  
+            # document.
+            # xpaths - a single string, or list of strings corresponding to valid xpath queries
+            # processors - a list of callable processors, i.e 'processors': [TakeFirst(), Join()]
+            # re - a regular expression to be passed into the function. It will be evaluated on all values.
+            'xpath': {'xpaths': [], 'processors': [], 're': []},
+
+            # if the value for any rule must be obtained by function, assign the function object here and it will 
+            # be called by the spider when run. each function must accept the following arguments:
+            # self,
+            # a selector,
+            # a response,
+            # *args
+            # **kwargs
+            'function': None,
+
+            # if the value is to be hardcoded, simply pass it in here. note the format
+            # follows the same format as the 'xpath' value above.
+            'value': {'values': [], 'processors': [], 're': []},
+
+            # Place a single string here with the default value that will be used in the event that all three above
+            # fail. 
+            'default': None,
+        }
+    }
+
+(A3) TEMPLATES (usage and template specific rules)
+
+Each ATS-generated jobs portal tends to handle pagination differently. Some sites have only a 'next' and 'previous' button, whereas others require a form submission (POST reuqest) in order to generate the next set of results. Others don't have any pagination at all and simply dump the results on to a single page. 
+
+The templates are designed to abstract away all the mechanics and nuances associated with pagination, and provide a single unified interface to common pagination mechanisms through use of the new rules. 
+
+Presently there are 3 templates in use: the SimpleList template, the PaginationList template, and the RecursiveList template.
+
+To use a template, you must first import it into your project, and your spider class must inherit from it. When using a template you must define a class variable, named 'parse_job_index_rules' that contains the entire set of rules to be used by that spider. The rules have to conform to the standard listed in the template file itself (a reference is provided as a giant block of comments in each .py file), which is listed here for reference.
+
+(A3-1) THE SIMPLELIST TEMPLATE
+
+The SimpleList template is considered the 'base' template and the remaining two Templates expand on its structure. Presumably all future templates will inherit from it. This template is best used for sites that do not require any pagination at all, and instead place all URLs on the same page.
+
+    # simple list parse_job_index_rules sample
+    parse_job_index_rules = {
+        
+        "base": "", 
+
+        # This should be an xpat that gets the '@href' value, most of the time it is ".//@href"
+        "joburl": { 
+            "xpath":, 
+            "function":, 
+            "value":, 
+            "default":,
+        },
+
+        # if any item field just happens to be relative to the job link, i.e in the same
+        # table in a different column, place a key corresponding to the field name here, and set the correct
+        # options for pulling it out.
+        # add as many <field_names> as are needed. The xpath provided is appended to the base url.
+        "relative": {
+            '<field_name>': {
+                "xpath":,
+                "function":,
+                "value":,
+                "default":,
+            }
+        },
+
+        # if any item field happens to be on the same page as the job listings, but not necessarily relative
+        # to the job link, add them here. The xpath provided will NOT be appended to the base URL and should
+        # be relative to the root.
+        "nonrelative":{
+            '<field_name>': {
+                "xpath":,
+                "function":,
+                "value":,
+                "default":,
+            }
+        },
+
+        # certain sites require a form submission in order to get the job data. If that is the case with your site
+        # fill in the options needed to acquire the form data from the page itself.
+        "formdata":{
+            "xpath":,
+            "function":,
+            "value":,
+            "default":,
+        },
+
+        # if you would rather use FormRequest.from_response to generate the request, you may do so by setting 
+        # 'static' to True. Note that if this is True, 'formdata' will be ignored, and is no longer necessary.
+        "from_response": {'static': False},
+
+        # certain sites may send requests to the same URL to get job detail pages, this may trigger Scrapy's duplicate filter.
+        # Disable it by setting 'static' to True.
+        "dont_filter": {'static': False},
+
+        # When using from_response, Scrapy simulates a click on the first clickable element it finds (most often a Submit button)
+        # If this behavior is inappropriate set this to True. 
+        "dont_click": {'static': False},
+    }
+
+The remaining two templates, PaginationList and RecursiveList add rules of their own. For more information on those proceed to their respective sections.
+
+(A3-2) THE PAGINATIONLIST TEMPLATE
+
+This template is best suited for sites whose pagination links require either a form submission with a 'currentpage' value, or a ?pagenum= query at the end of the URL's querystring. 
+
+In addition to the rules set by the SimpleList template, the parse_jobs_index_rules dictionary must also have an additional key, 'pagination', which itself is a ruleset that will govern how the spider paginates. 
+
+    parse_job_index_rules = {
+        ....
+        'pagination': {
+
+            # represents the total number of pages that have to be scraped. Usually pulled
+            # from the page, and from a line that says 'x of x pages'
+            'totalpages': {
+                "xpath":,
+                "function":,
+                "value":,
+                "default":,
+            },
+
+            # Sometimes the number of pages is not presented on the website
+            # and so the spider must manually calculate the number of pages by 
+            # getting the total number of items and dividing it by the number of items
+            # on the page.
+            'totalitems': {
+                "xpath":,
+                "function":,
+                "value":,
+                "default":,
+            },
+
+            # This corresponds to the number of items that are currently on the page
+            # and is used by the spider to determine the total number of pages
+            # it needs to generate requests for.
+            'itemsperpage': {
+                "xpath":,
+                "function":,
+                "value":,
+                "default":,
+            },
+
+            # Oftentimes, sites that require pagination like this require that you send
+            # a POST request to a specific URL, with the page number either in the form data
+            # or in the query string. 
+            # This is where you would specify that URL.
+            'url': {
+                "xpath":,
+                "function":,
+                "value":,
+                "default":,
+            },
+
+            # If you need to submit a form to paginate, set the options here to get the form
+            # data.
+            'formdata': {
+                "xpath":,
+                "function":,
+                "value":,
+                "default":,
+            },
+
+            # if you wish to use from_response to paginate, do so by setting static to True.
+            # These options are the same as the ones in the SimpleList index parsing rule set
+            # but they operate on the pagination URL as opposed to the job URLs.
+            'from_response': {'static': False},
+            'dont_click': {'static': False},
+            'dont_filter': {'static': False},
+        }
+
+    }
+
+(A3-3) THE RECURSIVELIST TEMPLATE
+
+This template is best used for sites that require repeated presses of a 'next' button to reach subsequent pages in a search results set. In addition to the base rules defined by the SimpleList template, the RecursiveList template adds an additional rule, named 'recursive', to the parse_job_index_rules ruleset. 
+
+    parse_job_index_rules = {
+        ....
+        'recursive': {
+
+            # If there is a next button, then the xpath/function/value that leads to it
+            # should be put here.
+            # It will continue submitting requests as long as this element is present on 
+            # the page.
+            'condition': {
+                'xpath':,
+                'function':,
+                'value':,
+                'default':,
+            },
+
+            # The URL that leads to the next page goes here. The selector that the spider uses internally,
+            # however, is bound to the response and not to the next button element provided in 'condition',
+            # so all xpath ought to be absolute. 
+            'url': {
+                'xpath':,
+                'function':,
+                'value':,
+                'default':,
+            },
+
+            # Like the PaginationList template, there are instances when a FormRequest is needed to get to the
+            # next page. The remaining 4 rules function exactly the same as the ones PaginationList template,
+            # and they operate on the pagination URL.
+            'formdata': {
+                'xpath':,
+                'function':,
+                'value':,
+                'default':,
+            },
+            'from_response': {'static': False},
+            'dont_click': {'static': False},
+            'dont_filter': {'static': False},
+        }
+    }
+
+(A4) PARSING JOB DATA
+
+In addition to the parse_job_index_rules dictionary, spiders must also define a parse_job variable. This variable also contains a ruleset that defines how the spider will collect data from the job detail page itself.
+
+Unlike the index rules, the job rules are a bit more straightforward. Each rule available is named after a field in the BrightcorpItem class, and carries the same options as their counterparts in the job index rules. See section (A2) BASIC STRUCTURE for an explanation of the options and their syntax. 
+
+    parse_job_rules = {
+        'title':{
+            'xpath':,
+            'function':,
+            'value':,
+            'default':,
+        },
+        'referencenumber':{
+            'xpath':,
+            'function':,
+            'value':,
+            'default':,
+        },
+        'description':{
+            'xpath':,
+            'function':,
+            'value':,
+            'default':,
+        },
+        'location':{
+            'xpath':,
+            'function':,
+            'value':,
+            'default':,
+        },
+    }
+

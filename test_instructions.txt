@@ -1,0 +1,44 @@
+
+Scraper Test:
+------------------------------
+
+Candidate should do:
+
+1) Atleast any 2 spiders completely out of 4 spiders.
+
+Pre-Requisites for Test:
+
+1) Scrapy with python installation, we recommend the python version as Python 2.7.3 and Scrapy 1.0.5
+2) If your system is giving any missing modules/packages, you can install it.
+3) You need to install Virtual Machine, i.e VirtualBox
+4) We need Vagrant, so download it and install it
+5) Take test zip code and work on it
+
+Sample scraper run test:
+
+We provide one sample scraper - naturejobs.pyc.
+You can run this scraper by following command in commmad line.
+scrapy crawl naturejobs -a url="http://www.nature.com/naturejobs/science/jobs" -a extract=1
+
+Output will be scraper items and final stats.
+
+
+Test Instructions:
+1) Once pull branch / download the specified zip file. Place the directory where you want.
+2) In command line, goto scraper directory, launch vagrant
+	gatherer1 - vagrant machine
+
+3) After completion of scraper code, you can run scraper by command.
+   Sample commmand is above mentioned.
+
+4) Once all scrapers done, make zip it and load it to github
+    Or push it to github branch
+    Note: Branch name must be scraper with your name.
+    i.e 'scraper-test-your_name'
+
+7) Send zip file to us.  Good Luck, Be relax !!
+
+
+
+Vagrant:
+We have vagrant set up upto date, so you can run your scraper smoothly.

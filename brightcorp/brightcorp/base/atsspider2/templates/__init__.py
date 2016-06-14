@@ -1,0 +1,3 @@
+from brightcorp.base.atsspider2.templates.simplelist import ATSSpider2_SimpleList as SimpleList
+from brightcorp.base.atsspider2.templates.recursivelist import ATSSpider2_RecursiveList as RecursiveList
+from brightcorp.base.atsspider2.templates.paginationlist import ATSSpider2_PaginationList as PaginationList

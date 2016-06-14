@@ -1,0 +1,17 @@
+---
+- hosts: scraper
+  sudo: True
+  user: deploy
+  tasks:
+  - name: restart scrapy
+    action: shell service scrapyd restart
+  - name: reset log / items
+    action: shell rm -rf /var/log/scrapyd/* /var/lib/scrapyd/items/*
+  - name: reset project
+    action: shell rm -fr /home/deploy/scraper
+  - name: pull sources from git repo
+    git: repo=git@github.com:brightjobs/scraper.git dest=/home/deploy/scraper version=master
+  - name: remove existing scraper project
+    action: shell curl 127.0.0.1:6800/delproject.json -d project=brightcorp
+  - name: deploy project
+    action: shell cd /home/deploy/scraper/brightcorp/ && scrapy deploy
